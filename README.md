@@ -2,6 +2,8 @@
 
 **Lightweight, resumable, self-hosted personal music archive and playlist synchronizer.**
 
+> **AI autonomy experiment:** This repository is an experiment in how far ChatGPT can take a real software project with a high degree of autonomy: planning, implementation, testing, documentation, and project tracking. Expect issues. The code may contain bugs, incomplete assumptions, regressions, or design mistakes. Human review and real-world validation are explicitly part of the experiment.
+
 Music Downloader is designed to turn music from supported sources into a clean, durable personal archive without turning the system into a heavyweight media server.
 
 It focuses on the hard parts that matter for a long-lived archive: **track identity, semantic deduplication, metadata quality, artwork validation, crash-safe downloads, playlist synchronization, and portable storage.**
@@ -249,21 +251,35 @@ The exact provider set and implementation details are intentionally kept behind 
 
 **Current status: Foundation implementation in progress.**
 
-The product requirements are documented in [`PRD.md`](./PRD.md). The first implementation slice establishes the Python package, runtime paths, SQLite foundation, domain models, identity normalization, storage primitives, provider/metadata/pipeline/delivery boundaries, CLI, tests, and Docker scaffolding.
+The product requirements are documented in [`PRD.md`](./PRD.md). Implementation is tracked through the repository's autonomous implementation roadmap issue, with work proceeding in bounded layers and small, meaningful daily commit batches.
 
 ### Planned phases
 
 - [x] Foundation: repository structure, configuration, SQLite schema, logging, CLI skeleton
+- [x] Resilient persistence/recovery foundation
+- [ ] Durable domain/repository model + schema migrations
+- [ ] Job orchestration and crash-safe state machine
+- [ ] Provider abstraction + first source adapter
 - [ ] Single-source download pipeline
 - [ ] Metadata tagging and validation
+- [ ] Artwork enrichment and validation
 - [ ] Source identity + semantic deduplication
 - [ ] Multi-provider identity resolution
-- [ ] Artwork enrichment and validation
 - [ ] Playlist synchronization
 - [ ] Telegram delivery
 - [ ] rsync/SSH synchronization
-- [ ] Crash recovery and operational hardening
-- [ ] Resource/performance tuning
+- [ ] Operational hardening and observability
+- [ ] Resource/performance tuning and v1 stabilization
+
+## AI autonomy experiment
+
+This project intentionally explores **AI autonomy in software engineering using ChatGPT**.
+
+The AI is being given substantial responsibility for planning implementation layers, writing code, creating tests, maintaining documentation, tracking progress, and deciding when a layer is sufficiently complete to move forward.
+
+This is an experiment, not a claim that AI-generated software is automatically reliable. **Expect bugs and issues.** The repository may contain incorrect assumptions, regressions, imperfect architecture, missing edge cases, or code that needs human correction. Human review, testing, and operational validation remain essential.
+
+The goal is to observe whether an AI can build a real, useful system while maintaining engineering discipline: small coherent commits, explicit invariants, tests, failure handling, incremental layers, and honest tracking of what is and is not complete.
 
 ## Target repository structure
 
@@ -277,6 +293,7 @@ The product requirements are documented in [`PRD.md`](./PRD.md). The first imple
 │       ├── models.py
 │       ├── identity.py
 │       ├── storage.py
+│       ├── state.py
 │       ├── providers/
 │       ├── metadata/
 │       ├── pipeline/
