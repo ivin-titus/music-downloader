@@ -247,13 +247,13 @@ The exact provider set and implementation details are intentionally kept behind 
 
 ## Project status
 
-**Current status: Architecture / planning.**
+**Current status: Foundation implementation in progress.**
 
-The product requirements are documented in [`PRD.md`](./PRD.md). Implementation will proceed incrementally, starting with the persistence and filesystem foundation before adding source integrations and higher-level enrichment.
+The product requirements are documented in [`PRD.md`](./PRD.md). The first implementation slice establishes the Python package, runtime paths, SQLite foundation, domain models, identity normalization, storage primitives, provider/metadata/pipeline/delivery boundaries, CLI, tests, and Docker scaffolding.
 
 ### Planned phases
 
-- [ ] Foundation: repository structure, configuration, SQLite schema, migrations, logging, CLI skeleton
+- [x] Foundation: repository structure, configuration, SQLite schema, logging, CLI skeleton
 - [ ] Single-source download pipeline
 - [ ] Metadata tagging and validation
 - [ ] Source identity + semantic deduplication
@@ -269,26 +269,28 @@ The product requirements are documented in [`PRD.md`](./PRD.md). Implementation 
 
 ```text
 .
-├── app/
-│   ├── cli/
-│   ├── config/
-│   ├── db/
-│   ├── identity/
-│   ├── metadata/
-│   ├── providers/
-│   ├── archive/
-│   ├── playlists/
-│   ├── delivery/
-│   └── sync/
+├── src/
+│   └── music_downloader/
+│       ├── cli.py
+│       ├── config.py
+│       ├── db.py
+│       ├── models.py
+│       ├── identity.py
+│       ├── storage.py
+│       ├── providers/
+│       ├── metadata/
+│       ├── pipeline/
+│       └── delivery/
 ├── tests/
 ├── Dockerfile
 ├── docker-compose.yml
 ├── pyproject.toml
 ├── PRD.md
-└── README.md
+├── README.md
+└── README_DEV.md
 ```
 
-This is a target structure, not a requirement to create every module immediately.
+The structure is intentionally modular. Provider-specific code should not leak into archive, identity, or persistence logic.
 
 ## Design invariants
 
@@ -307,8 +309,7 @@ The implementation should preserve these rules:
 ## Documentation
 
 - **[Product Requirements Document](./PRD.md)** — complete product, architecture, data model, operational, and implementation requirements.
-
-As implementation begins, additional documentation should cover configuration, supported providers, deployment, backup/restore, troubleshooting, and development workflows.
+- **[Development Guide](./README_DEV.md)** — local setup, test/lint commands, and package boundaries.
 
 ## Contributing
 
