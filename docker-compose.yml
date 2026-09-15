@@ -1,0 +1,6 @@
+services:
+  music-downloader:
+    build: .
+    restart: unless-stopped
+    volumes:
+      - ${MUSIC_DOWNLOADER_ROOT:-./runtime}:/root/music_downloader
