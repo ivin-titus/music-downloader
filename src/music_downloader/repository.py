@@ -4,7 +4,7 @@ import json
 import sqlite3
 from contextlib import contextmanager
 from dataclasses import asdict
-from typing import Any, Iterator
+from typing import Iterator
 
 from music_downloader.models import ResolvedTrack, SourceTrack
 from music_downloader.state import TrackStatus, require_transition
@@ -15,17 +15,32 @@ class ArchiveRepository:
 
     def __init__(self, connection: sqlite3.Connection) -> None:
         self.connection = connection
+        self._savepoint_counter = 0
 
     @contextmanager
     def transaction(self) -> Iterator[sqlite3.Connection]:
-        """Commit a unit of work, or roll it back completely on failure."""
+        """Commit an outer unit of work or isolate nested work with a savepoint."""
+        if not self.connection.in_transaction:
+            try:
+                yield self.connection
+            except BaseException:
+                self.connection.rollback()
+                raise
+            else:
+                self.connection.commit()
+            return
+
+        self._savepoint_counter += 1
+        savepoint = f"archive_repository_{self._savepoint_counter}"
+        self.connection.execute(f"SAVEPOINT {savepoint}")
         try:
             yield self.connection
         except BaseException:
-            self.connection.rollback()
+            self.connection.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")
+            self.connection.execute(f"RELEASE SAVEPOINT {savepoint}")
             raise
         else:
-            self.connection.commit()
+            self.connection.execute(f"RELEASE SAVEPOINT {savepoint}")
 
     def create_track(self, track: ResolvedTrack) -> int:
         cursor = self.connection.execute(
