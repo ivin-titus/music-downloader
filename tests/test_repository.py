@@ -85,3 +85,40 @@ def test_status_transition_is_persisted(tmp_path: Path) -> None:
 
     assert repo.get_track(track_id)["status"] == TrackStatus.RESOLVING.value
     repo.close()
+
+
+def test_nested_failure_does_not_rollback_outer_transaction(tmp_path: Path) -> None:
+    repo = repository(tmp_path)
+
+    with repo.transaction():
+        first_id = repo.create_track(ResolvedTrack(title="Keep"))
+
+        with pytest.raises(RuntimeError):
+            with repo.transaction():
+                repo.create_track(ResolvedTrack(title="Discard"))
+                raise RuntimeError("inner abort")
+
+        second_id = repo.create_track(ResolvedTrack(title="Keep Too"))
+
+    titles = {
+        row["title"]
+        for row in repo.connection.execute(
+            "SELECT title FROM tracks ORDER BY id"
+        )
+    }
+    assert first_id != second_id
+    assert titles == {"Keep", "Keep Too"}
+    repo.close()
+
+
+def test_nested_success_does_not_commit_before_outer_transaction(tmp_path: Path) -> None:
+    repo = repository(tmp_path)
+
+    with repo.transaction():
+        repo.create_track(ResolvedTrack(title="Inner"))
+        with repo.transaction():
+            repo.create_track(ResolvedTrack(title="Nested"))
+        assert repo.connection.in_transaction
+
+    assert repo.connection.execute("SELECT COUNT(*) FROM tracks").fetchone()[0] == 2
+    repo.close()
