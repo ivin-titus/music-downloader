@@ -1,2 +1,3 @@
 from .archive import ArchiveService
-__all__=["ArchiveService"]
+from .playlist import PlaylistService
+__all__=["ArchiveService","PlaylistService"]
