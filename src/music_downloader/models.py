@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 
-
 @dataclass(frozen=True, slots=True)
 class SourceTrack:
     provider: str
@@ -10,7 +9,7 @@ class SourceTrack:
     artist: str | None = None
     album: str | None = None
     duration_ms: int | None = None
-
+    artwork_url: str | None = None
 
 @dataclass(frozen=True, slots=True)
 class ResolvedTrack:
