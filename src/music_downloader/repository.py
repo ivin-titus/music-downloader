@@ -3,7 +3,7 @@ import json, sqlite3
 from contextlib import contextmanager
 from dataclasses import asdict
 from typing import Iterator
-from music_downloader.identity import identity_score, resolve_source_track
+from music_downloader.identity import identity_score
 from music_downloader.models import ResolvedTrack, SourceTrack
 from music_downloader.state import TrackStatus, require_transition
 
@@ -35,7 +35,7 @@ class ArchiveRepository:
         if row is None: raise KeyError(f"unknown track id: {track_id}")
         return row
     def find_matching_track(self,source:SourceTrack,min_score:float=0.75)->int|None:
-        resolved=resolve_source_track(source); best_id=None; best=0.0
+        best_id=None; best=0.0
         for row in self.connection.execute("SELECT * FROM tracks WHERE status <> 'failed'"):
             candidate=ResolvedTrack(row["title"],row["artist"],row["album"],row["album_artist"],row["duration_ms"],row["recording_key"])
             score=identity_score(source,candidate)
