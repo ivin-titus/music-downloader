@@ -77,18 +77,19 @@ class JobRepository:
     def claim_next(self, *, lease_seconds: int = 900) -> Job | None:
         self._validate_lease(lease_seconds)
         with self.archive.transaction():
+            self.archive.connection.execute(
+                """UPDATE jobs SET state=?,lease_until=NULL,completed_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP
+                   WHERE state=? AND lease_until IS NOT NULL AND lease_until <= CURRENT_TIMESTAMP AND attempts >= max_attempts""",
+                (JobState.FAILED, JobState.RUNNING),
+            )
             row = self.archive.connection.execute(
                 """SELECT * FROM jobs
-                   WHERE state=? OR (state=? AND lease_until IS NOT NULL AND lease_until <= CURRENT_TIMESTAMP)
+                   WHERE (state=? OR (state=? AND lease_until IS NOT NULL AND lease_until <= CURRENT_TIMESTAMP))
+                     AND attempts < max_attempts
                    ORDER BY id LIMIT 1""",
                 (JobState.PENDING, JobState.RUNNING),
             ).fetchone()
-            if row is None or row["attempts"] >= row["max_attempts"]:
-                if row is not None and row["attempts"] >= row["max_attempts"]:
-                    self.archive.connection.execute(
-                        "UPDATE jobs SET state=?,completed_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=?",
-                        (JobState.FAILED, row["id"]),
-                    )
+            if row is None:
                 return None
             self._mark_running(int(row["id"]), lease_seconds)
             return self._to_job(self._fetch(int(row["id"])))
