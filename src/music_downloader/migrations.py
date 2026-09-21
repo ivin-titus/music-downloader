@@ -21,6 +21,12 @@ MIGRATIONS: tuple[Migration, ...] = (
         "CREATE INDEX IF NOT EXISTS idx_jobs_state ON jobs(state)",
         "CREATE INDEX IF NOT EXISTS idx_jobs_track_id ON jobs(track_id)",
     )),
+    (3, (
+        "ALTER TABLE jobs ADD COLUMN started_at TEXT",
+        "ALTER TABLE jobs ADD COLUMN completed_at TEXT",
+        "ALTER TABLE jobs ADD COLUMN lease_until TEXT",
+        "CREATE INDEX IF NOT EXISTS idx_jobs_lease_until ON jobs(state, lease_until)",
+    )),
 )
 
 def _create_migration_table(connection: sqlite3.Connection) -> None:
