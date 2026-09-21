@@ -26,7 +26,7 @@ class ArchiveService:
             current=TrackStatus(self.repository.get_track(track_id)["status"])
             if current==TrackStatus.ARCHIVED: return int(track_id)
             if current==TrackStatus.DISCOVERED: self.repository.set_track_status(track_id,TrackStatus.RESOLVING)
-        final=self.music_root/self._filename(resolved.title,resolved.artist)
+        final=self._final_path(source.title,resolved.artist,track_id)
         if final.exists():
             digest=sha256_file(final)
             with self.repository.transaction():
@@ -62,9 +62,23 @@ class ArchiveService:
                 if current not in (TrackStatus.FAILED,TrackStatus.ARCHIVED):
                     self.repository.set_track_status(track_id,TrackStatus.FAILED)
             raise RuntimeError(f"ingest failed for source {source.source_id}: {exc}") from exc
+    def _final_path(self, source_title: str, artist: str | None, track_id: int) -> Path:
+        filename = self._filename(source_title, artist)
+        candidate = self.music_root / filename
+        if not candidate.exists():
+            return candidate
+        row = self.repository.connection.execute(
+            "SELECT id FROM tracks WHERE file_path=?",
+            (str(candidate),),
+        ).fetchone()
+        if row is not None and int(row["id"]) == track_id:
+            return candidate
+        stem = candidate.stem
+        return candidate.with_name(f"{stem} [{track_id}]{candidate.suffix}")
+
     @staticmethod
-    def _filename(title:str,artist:str|None)->str:
-        stem=f"{artist} - {title}" if artist else title
-        cleaned="".join(ch if ch not in '<>:"/\\|?*' else "_" for ch in stem)
-        cleaned=" ".join(cleaned.split()).strip(". ")
-        return (cleaned or "untitled")+".mp3"
+    def _filename(title: str, artist: str | None) -> str:
+        stem = f"{artist} - {title}" if artist else title
+        cleaned = "".join(ch if ch not in '<>:"/\\|?*' else "_" for ch in stem)
+        cleaned = " ".join(cleaned.split()).strip(". ")
+        return (cleaned or "untitled") + ".mp3"
