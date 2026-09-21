@@ -101,7 +101,7 @@ class JobRepository:
                 raise RuntimeError(f"job {job_id} is not running")
             self.archive.connection.execute(
                 "UPDATE jobs SET lease_until=datetime(CURRENT_TIMESTAMP, ?),updated_at=CURRENT_TIMESTAMP WHERE id=?",
-                (f"+{lease_seconds} seconds", job_id),
+                (JobState.RUNNING, f"+{lease_seconds} seconds", job_id),
             )
             return self._to_job(self._fetch(job_id))
 
