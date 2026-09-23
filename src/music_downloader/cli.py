@@ -1,47 +1,163 @@
+from __future__ import annotations
+
+import json
 from pathlib import Path
+
 import typer
+
 from .config import default_settings
 from .db import connect, initialize
-from .pipeline import ArchiveService, PlaylistService
+from .jobs import JobRepository, JobState
+from .models import SourceTrack
+from .pipeline import ArchiveService, DownloadOrchestrator, PlaylistService
 from .providers import YtDlpProvider
+from .repository import ArchiveRepository
 
-app=typer.Typer(help="Personal music archive and playlist synchronizer.")
+app = typer.Typer(help="Personal music archive and playlist synchronizer.")
 
-def settings_for(root:Path|None):
-    settings=default_settings() if root is None else type(default_settings())(root)
+
+def settings_for(root: Path | None):
+    settings = default_settings() if root is None else type(default_settings())(root)
     settings.ensure_directories()
     initialize(settings.database_path)
     return settings
 
-@app.command()
-def init(root:Path|None=typer.Option(None,help="Archive root directory."))->None:
-    settings=settings_for(root); typer.echo(f"Initialized archive at {settings.root_dir}")
+
+def repository_for(settings) -> ArchiveRepository:
+    return ArchiveRepository(connect(settings.database_path))
+
 
 @app.command()
-def ingest(url:str,root:Path|None=typer.Option(None,help="Archive root directory."))->None:
-    settings=settings_for(root)
-    connection=connect(settings.database_path)
+def init(root: Path | None = typer.Option(None, help="Archive root directory.")) -> None:
+    settings = settings_for(root)
+    typer.echo(f"Initialized archive at {settings.root_dir}")
+
+
+@app.command()
+def ingest(url: str, root: Path | None = typer.Option(None, help="Archive root directory.")) -> None:
+    settings = settings_for(root)
+    repository = repository_for(settings)
     try:
-        service=ArchiveService(__import__("music_downloader.repository",fromlist=["ArchiveRepository"]).ArchiveRepository(connection),YtDlpProvider(),settings.music_dir)
-        track_id=service.ingest(YtDlpProvider().inspect(url))
+        provider = YtDlpProvider()
+        service = ArchiveService(repository, provider, settings.music_dir)
+        track_id = service.ingest(provider.inspect(url))
         typer.echo(f"Archived track {track_id}")
     finally:
-        connection.close()
+        repository.close()
+
 
 @app.command()
-def playlist(url:str,root:Path|None=typer.Option(None,help="Archive root directory."))->None:
-    settings=settings_for(root); connection=connect(settings.database_path)
+def playlist(url: str, root: Path | None = typer.Option(None, help="Archive root directory.")) -> None:
+    settings = settings_for(root)
+    repository = repository_for(settings)
     try:
-        provider=YtDlpProvider()
-        archive=ArchiveService(__import__("music_downloader.repository",fromlist=["ArchiveRepository"]).ArchiveRepository(connection),provider,settings.music_dir)
-        playlist_id=PlaylistService(archive.repository,archive).sync(provider.playlist(url))
+        provider = YtDlpProvider()
+        archive = ArchiveService(repository, provider, settings.music_dir)
+        playlist_id = PlaylistService(repository, archive).sync(provider.playlist(url))
+        if playlist_id is None:
+            raise typer.BadParameter("playlist contained no supported items")
         typer.echo(f"Synchronized playlist {playlist_id}")
     finally:
-        connection.close()
+        repository.close()
+
 
 @app.command()
-def version()->None:
+def status(root: Path | None = typer.Option(None, help="Archive root directory.")) -> None:
+    """Show track and job state counts."""
+    settings = settings_for(root)
+    repository = repository_for(settings)
+    try:
+        track_rows = repository.connection.execute(
+            "SELECT status, COUNT(*) AS count FROM tracks GROUP BY status ORDER BY status"
+        ).fetchall()
+        job_rows = repository.connection.execute(
+            "SELECT state, COUNT(*) AS count FROM jobs GROUP BY state ORDER BY state"
+        ).fetchall()
+        if not track_rows:
+            typer.echo("No tracks in archive.")
+        else:
+            typer.echo("Tracks:")
+            for row in track_rows:
+                typer.echo(f"  {row['status']}: {row['count']}")
+        typer.echo("Jobs:")
+        if not job_rows:
+            typer.echo("  none")
+        else:
+            for row in job_rows:
+                typer.echo(f"  {row['state']}: {row['count']}")
+    finally:
+        repository.close()
+
+
+@app.command()
+def retry(root: Path | None = typer.Option(None, help="Archive root directory.")) -> None:
+    """Recover stale jobs and retry pending ingest jobs."""
+    settings = settings_for(root)
+    repository = repository_for(settings)
+    jobs = JobRepository(repository)
+    provider = YtDlpProvider()
+    archive = ArchiveService(repository, provider, settings.music_dir)
+    orchestrator = DownloadOrchestrator(jobs, archive)
+    try:
+        recovered = jobs.recover_stale()
+        rows = repository.connection.execute(
+            """SELECT id,idempotency_key FROM jobs
+               WHERE state=? AND kind='ingest' ORDER BY id""",
+            (JobState.PENDING,),
+        ).fetchall()
+        succeeded = 0
+        failed = 0
+        for row in rows:
+            provider_name, source_id = str(row["idempotency_key"]).split(":", 1)
+            source_row = repository.connection.execute(
+                """SELECT metadata_json FROM sources
+                   WHERE provider=? AND source_id=?""",
+                (provider_name, source_id),
+            ).fetchone()
+            if source_row is None:
+                typer.echo(
+                    f"Job {row['id']}: source metadata is unavailable for retry.",
+                    err=True,
+                )
+                failed += 1
+                continue
+            source = SourceTrack(**json.loads(source_row["metadata_json"]))
+            try:
+                orchestrator.ingest(source)
+            except Exception:
+                failed += 1
+            else:
+                succeeded += 1
+        typer.echo(f"Recovered {recovered} stale job(s); retried {succeeded} job(s).")
+        if failed:
+            typer.echo(f"{failed} job(s) could not be retried.", err=True)
+            raise typer.Exit(code=1)
+    finally:
+        repository.close()
+
+
+@app.command()
+def verify(root: Path | None = typer.Option(None, help="Archive root directory.")) -> None:
+    """Verify archived file presence and stored SHA-256 integrity."""
+    settings = settings_for(root)
+    repository = repository_for(settings)
+    try:
+        problems = repository.verify_archive()
+        if problems:
+            for problem in problems:
+                typer.echo(f"ERROR: {problem}", err=True)
+            raise typer.Exit(code=1)
+        typer.echo("Archive verification passed.")
+    finally:
+        repository.close()
+
+
+@app.command()
+def version() -> None:
     from . import __version__
+
     typer.echo(__version__)
 
-if __name__=="__main__": app()
+
+if __name__ == "__main__":
+    app()
