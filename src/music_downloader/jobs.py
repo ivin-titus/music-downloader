@@ -57,6 +57,16 @@ class JobRepository:
             ).fetchone()
             return int(row["id"])
 
+    def attach_track(self, job_id: int, track_id: int) -> None:
+        with self.archive.transaction():
+            self.archive.get_track(track_id)
+            cur = self.archive.connection.execute(
+                "UPDATE jobs SET track_id=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                (track_id, job_id),
+            )
+            if cur.rowcount != 1:
+                raise KeyError(f"unknown job id: {job_id}")
+
     def claim(self, job_id: int, *, lease_seconds: int = 900) -> Job:
         self._validate_lease(lease_seconds)
         with self.archive.transaction():
@@ -182,7 +192,6 @@ class JobRepository:
         if lease_until is None:
             return True
         import datetime
-
         value = datetime.datetime.fromisoformat(lease_until)
         return value <= datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
 
