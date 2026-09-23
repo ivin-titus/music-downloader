@@ -27,6 +27,22 @@ MIGRATIONS: tuple[Migration, ...] = (
         "ALTER TABLE jobs ADD COLUMN lease_until TEXT",
         "CREATE INDEX IF NOT EXISTS idx_jobs_lease_until ON jobs(state, lease_until)",
     )),
+    (4, (
+        """CREATE TABLE IF NOT EXISTS playlist_items (
+            id INTEGER PRIMARY KEY,
+            playlist_id INTEGER NOT NULL REFERENCES playlists(id) ON DELETE CASCADE,
+            source_item_id TEXT NOT NULL,
+            position INTEGER NOT NULL,
+            source_url TEXT,
+            track_id INTEGER REFERENCES tracks(id) ON DELETE SET NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(playlist_id, source_item_id),
+            UNIQUE(playlist_id, position)
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_playlist_items_track_id ON playlist_items(track_id)",
+        "CREATE INDEX IF NOT EXISTS idx_playlist_items_playlist_position ON playlist_items(playlist_id, position)",
+    )),
 )
 
 def _create_migration_table(connection: sqlite3.Connection) -> None:

@@ -63,11 +63,27 @@ class ArchiveRepository:
                ON CONFLICT(provider,source_id) DO UPDATE SET title=excluded.title,source_url=excluded.source_url,updated_at=CURRENT_TIMESTAMP
                RETURNING id""",(provider,source_id,title,url)).fetchone()
         return int(row["id"])
-    def replace_playlist_tracks(self,playlist_id:int,track_ids:list[int])->None:
+    def replace_playlist_items(self, playlist_id: int, items: list, track_ids: list[int]) -> None:
+        if len(items) != len(track_ids):
+            raise ValueError("playlist items and track ids must have the same length")
+        rows = [
+            (
+                playlist_id,
+                item.source.source_id,
+                position,
+                item.source.url,
+                track_id,
+            )
+            for position, (item, track_id) in enumerate(zip(items, track_ids, strict=True))
+        ]
         with self.transaction():
-            self.connection.execute("DELETE FROM playlist_tracks WHERE playlist_id=?",(playlist_id,))
-            self.connection.executemany("INSERT INTO playlist_tracks(playlist_id,track_id,position) VALUES(?,?,?)",
-                                        [(playlist_id,track_id,position) for position,track_id in enumerate(track_ids)])
+            self.connection.execute("DELETE FROM playlist_items WHERE playlist_id=?", (playlist_id,))
+            self.connection.executemany(
+                """INSERT INTO playlist_items(
+                    playlist_id,source_item_id,position,source_url,track_id
+                ) VALUES(?,?,?,?,?)""",
+                rows,
+            )
     def set_track_status(self,track_id:int,target:TrackStatus)->None:
         current=TrackStatus(self.get_track(track_id)["status"]); require_transition(current,target)
         self.connection.execute("UPDATE tracks SET status=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",(target.value,track_id))

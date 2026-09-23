@@ -19,6 +19,7 @@ class PlaylistService:
         first = materialized[0]
         if not first.playlist_source_id:
             raise ValueError("provider items do not identify a playlist")
+
         playlist_id = self.repository.upsert_playlist(
             self.archive.provider.name,
             first.playlist_source_id,
@@ -26,5 +27,5 @@ class PlaylistService:
             first.playlist_url,
         )
         track_ids = [self.archive.ingest(item.source) for item in materialized]
-        self.repository.replace_playlist_tracks(playlist_id, track_ids)
+        self.repository.replace_playlist_items(playlist_id, materialized, track_ids)
         return playlist_id
