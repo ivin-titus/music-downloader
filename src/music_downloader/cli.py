@@ -39,24 +39,43 @@ def ingest(url: str, root: Path | None = typer.Option(None, help="Archive root d
     repository = repository_for(settings)
     try:
         provider = YtDlpProvider()
-        service = ArchiveService(repository, provider, settings.music_dir)
-        track_id = service.ingest(provider.inspect(url))
+        archive = ArchiveService(repository, provider, settings.music_dir)
+        track_id = DownloadOrchestrator(JobRepository(repository), archive).ingest(
+            provider.inspect(url)
+        )
         typer.echo(f"Archived track {track_id}")
     finally:
         repository.close()
 
 
 @app.command()
-def playlist(url: str, root: Path | None = typer.Option(None, help="Archive root directory.")) -> None:
+def playlist(
+    url: str,
+    root: Path | None = typer.Option(None, help="Archive root directory and database."),
+    output: Path | None = typer.Option(
+        None,
+        "--output",
+        "-o",
+        help="Directory where this playlist's MP3 files are stored.",
+    ),
+) -> None:
+    """Download and archive every supported item in a playlist."""
     settings = settings_for(root)
     repository = repository_for(settings)
+    music_root = (output or settings.music_dir).expanduser().resolve()
+    music_root.mkdir(parents=True, exist_ok=True)
     try:
         provider = YtDlpProvider()
-        archive = ArchiveService(repository, provider, settings.music_dir)
-        playlist_id = PlaylistService(repository, archive).sync(provider.playlist(url))
+        archive = ArchiveService(repository, provider, music_root)
+        jobs = JobRepository(repository)
+        playlist_id = PlaylistService(
+            repository,
+            archive,
+            DownloadOrchestrator(jobs, archive),
+        ).sync(provider.playlist(url))
         if playlist_id is None:
             raise typer.BadParameter("playlist contained no supported items")
-        typer.echo(f"Synchronized playlist {playlist_id}")
+        typer.echo(f"Synchronized playlist {playlist_id} into {music_root}")
     finally:
         repository.close()
 
