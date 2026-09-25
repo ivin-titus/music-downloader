@@ -2,15 +2,25 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
+from music_downloader.jobs import JobRepository
 from music_downloader.pipeline.archive import ArchiveService
+from music_downloader.pipeline.orchestrator import DownloadOrchestrator
 from music_downloader.providers.base import ProviderItem
 from music_downloader.repository import ArchiveRepository
 
 
 class PlaylistService:
-    def __init__(self, repository: ArchiveRepository, archive: ArchiveService) -> None:
+    def __init__(
+        self,
+        repository: ArchiveRepository,
+        archive: ArchiveService,
+        orchestrator: DownloadOrchestrator | None = None,
+    ) -> None:
         self.repository = repository
         self.archive = archive
+        self.orchestrator = orchestrator or DownloadOrchestrator(
+            JobRepository(repository), archive
+        )
 
     def sync(self, items: Iterable[ProviderItem]) -> int | None:
         materialized = list(items)
@@ -26,6 +36,6 @@ class PlaylistService:
             first.playlist_title or first.playlist_source_id,
             first.playlist_url,
         )
-        track_ids = [self.archive.ingest(item.source) for item in materialized]
+        track_ids = [self.orchestrator.ingest(item.source) for item in materialized]
         self.repository.replace_playlist_items(playlist_id, materialized, track_ids)
         return playlist_id
